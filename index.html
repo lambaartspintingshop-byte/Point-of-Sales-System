@@ -1,0 +1,525 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Point Of Sales & Inventory</title>
+<style>
+/* ===== Reset & base ===== */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial}
+body{background:linear-gradient(180deg,#f6fafb,#eef3f7);color:#0f172a}
+.container{max-width:1280px;margin:22px auto;padding:18px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+header h1{font-size:20px;margin:0}
+.muted{color:#64748b;font-size:13px}
+
+/* ===== Sidebar Tabs ===== */
+.sidebar{position:sticky;top:18px;align-self:start}
+.tabs{display:flex;background:linear-gradient(180deg,#0ea5a4,#0b8f8e);border-radius:16px;padding:10px;gap:8px;align-items:stretch;box-shadow:0 12px 28px rgba(2,6,23,0.08)}
+/* stack vertically only inside sidebar */
+.sidebar .tabs{flex-direction:column}
+.tab{background:transparent;color:white;border:none;padding:12px 14px;border-radius:12px;cursor:pointer;font-weight:700;text-align:left;opacity:.9;transition:transform .18s ease, box-shadow .18s ease, background .18s ease, opacity .18s}
+.tab:hover{opacity:1;transform:translateX(2px)}
+.tab.active{background:white;color:#0f172a;box-shadow:0 10px 24px rgba(2,6,23,0.10)}
+
+/* ===== Top utilities row (search stays here) ===== */
+.top-row{display:flex;gap:12px;align-items:center;margin-bottom:18px;justify-content:flex-end}
+
+/* ===== layout (sidebar | main | cart) ===== */
+.layout{display:grid;grid-template-columns:220px 1fr 380px;gap:16px;align-items:start}
+.panel{background:white;border-radius:14px;padding:14px;box-shadow:0 10px 30px rgba(2,6,23,0.06)}
+.panel h2{margin:0 0 6px;font-size:16px}
+.grid{display:grid;gap:12px}
+
+/* ===== product tiles ===== */
+.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.tile{border-radius:12px;padding:12px;border:1px solid #eef2f7;background:linear-gradient(180deg,#fff,#fbfdff);cursor:pointer;transition:transform .15s, box-shadow .15s}
+.tile:hover{transform:translateY(-6px);box-shadow:0 12px 30px rgba(2,6,23,0.06)}
+.tile .name{font-weight:700;margin-bottom:6px}
+.tile .meta{font-size:13px;color:#475569}
+
+/* ===== cart ===== */
+.cart-panel{position:relative}
+.cart{position:sticky;top:18px;border-radius:12px;padding:12px}
+.cart-item{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px dashed #f1f5f9}
+.qty{display:flex;gap:6px;align-items:center}
+.btn{padding:8px 12px;border-radius:10px;border:0;cursor:pointer;background:#0ea5a4;color:white;font-weight:700}
+.btn.ghost{background:transparent;border:1px solid #e6eef6;color:#0f172a}
+.btn.small{padding:6px 8px;font-size:13px}
+.btn.danger{background:#ef4444;color:white}
+.totals{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+
+/* ===== inventory table ===== */
+table{width:100%;border-collapse:collapse;margin-top:10px}
+th,td{padding:8px;border-bottom:1px solid #f1f5f9;text-align:left}
+th{font-weight:700;color:#0f172a}
+.actions button{margin-right:6px}
+
+/* ===== reports ===== */
+.filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px}
+.summary{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+.card{padding:12px;border-radius:10px;background:linear-gradient(180deg,#fff,#fbfdff);border:1px solid #eef2f7;min-width:160px}
+
+/* ===== modal ===== */
+.modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.45);display:none;align-items:center;justify-content:center;z-index:60}
+.modal-backdrop.show{display:flex}
+.modal{width:520px;background:white;border-radius:12px;padding:14px;box-shadow:0 18px 50px rgba(2,6,23,0.18)}
+.modal input{padding:8px;border-radius:8px;border:1px solid #eef2f7;width:100%}
+
+/* ===== small screens ===== */
+@media (max-width:1100px){
+  .layout{grid-template-columns:1fr}
+  .sidebar{position:relative;top:auto}
+  .cart{position:relative;top:auto;margin-top:12px}
+}
+
+/* ===== animations ===== */
+.fadeIn{animation:fadeIn .28s ease both}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.fadeUp{animation:fadeUp .30s ease both}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.slideIn{animation:slideIn .32s ease both}
+@keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <div>
+      <h1>Point Of Sales & Inventory</h1>
+      <div class="muted">Sari Sari Store</div>
+    </div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <div id="clock" class="muted"></div>
+      <button class="btn ghost small" id="btn-reset">Reset Data</button>
+    </div>
+  </header>
+
+  <!-- Search stays on top; tabs moved to sidebar -->
+  <div class="top-row">
+    <input id="global-search" placeholder="Search products..." style="padding:8px 10px;border-radius:10px;border:1px solid #eef2f7" />
+    <button class="btn ghost small" id="btn-search">Search</button>
+  </div>
+
+  <div class="layout">
+    <!-- ===== Sidebar with tabs ===== -->
+    <aside class="sidebar slideIn" aria-label="Main">
+      <div class="tabs" role="tablist" aria-orientation="vertical">
+        <button class="tab active" data-tab="pos" role="tab" aria-selected="true">POS</button>
+        <button class="tab" data-tab="inventory" role="tab" aria-selected="false">Inventory</button>
+        <button class="tab" data-tab="reports" role="tab" aria-selected="false">Reports</button>
+      </div>
+    </aside>
+
+    <!-- ===== Main content ===== -->
+    <main>
+      <section id="tab-pos" class="panel fadeIn">
+        <h2>Point of Sale</h2>
+        <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px">
+          <div class="muted">Tap a product tile to add to cart. Use keyboard barcode scanners (Enter-terminated)</div>
+          <div style="margin-left:auto;display:flex;gap:8px">
+            <input id="quick-sku" placeholder="Enter barcode + Enter" style="padding:8px 10px;border-radius:10px;border:1px solid #eef2f7" />
+            <input id="quick-qty" type="number" min="1" value="1" style="width:80px;padding:8px;border-radius:8px;border:1px solid #eef2f7" />
+            <button class="btn small" id="btn-add-sku">Add</button>
+          </div>
+        </div>
+        <div id="productsArea" class="products-grid" aria-live="polite"></div>
+      </section>
+
+      <section id="tab-inventory" class="panel" style="display:none">
+        <h2>Inventory</h2>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px">
+          <button class="btn" id="btn-add-product">Add Product</button>
+          <button class="btn ghost" id="btn-import">Import CSV</button>
+          <button class="btn ghost" id="btn-export-products">Export CSV</button>
+        </div>
+        <div id="inventoryArea"></div>
+      </section>
+
+      <section id="tab-reports" class="panel" style="display:none">
+        <h2>Reports</h2>
+        <div class="filters">
+          <label class="muted">Filter:</label>
+          <select id="rep-type">
+            <option value="all">All</option>
+            <option value="day">Daily</option>
+            <option value="month">Monthly</option>
+            <option value="range">Custom range</option>
+          </select>
+          <input type="date" id="rep-day" style="display:none" />
+          <input type="month" id="rep-month" style="display:none" />
+          <input type="date" id="rep-from" style="display:none" />
+          <input type="date" id="rep-to" style="display:none" />
+          <button class="btn small" id="btn-filter">Apply</button>
+          <button class="btn ghost small" id="btn-export-reports">Export CSV</button>
+        </div>
+        <div class="summary" id="reportSummary">
+          <div class="card"><div class="muted">Total Sales</div><div id="summary-total" style="font-weight:800;font-size:18px">₱0.00</div></div>
+          <div class="card"><div class="muted">Transactions</div><div id="summary-count" style="font-weight:800;font-size:18px">0</div></div>
+        </div>
+        <div id="reportTable"></div>
+      </section>
+    </main>
+
+    <!-- ===== Cart ===== -->
+    <aside class="cart-panel">
+      <div id="cartBox" class="panel cart">
+        <h3 style="margin:0 0 8px">Cart</h3>
+        <div id="cartItems"></div>
+        <div class="totals">
+          <div class="muted">Subtotal</div>
+          <div id="cartSubtotal" style="font-weight:800">₱0.00</div>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px">
+          <select id="paymentMethod" style="padding:8px;border-radius:8px;border:1px solid #eef2f7">
+            <option value="cash">Cash</option>
+            <option value="gcash">GCash</option>
+            <option value="card">Card</option>
+          </select>
+          <button class="btn" id="btn-checkout">Checkout</button>
+        </div>
+        <div style="margin-top:8px;display:flex;gap:8px">
+          <button class="btn ghost small" id="btn-clear-cart">Clear</button>
+          <button class="btn ghost small" id="btn-print-preview">Print Preview</button>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<!-- Admin Login Modal -->
+<div id="adminModal" class="modal-backdrop">
+  <div class="modal">
+    <h3>Admin Login</h3>
+    <input type="text" id="adminUser" placeholder="Username" />
+    <input type="password" id="adminPass" placeholder="Password" />
+    <div style="margin-top:12px;display:flex;gap:6px;justify-content:flex-end">
+      <button id="adminLoginBtn" class="btn">Login</button>
+      <button id="adminCancelBtn" class="btn ghost">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="receiptArea" style="display:none"></div>
+
+<script>
+// === STORAGE & DATA ===
+let products = JSON.parse(localStorage.getItem('products')||'[]');
+let cart = JSON.parse(localStorage.getItem('cart')||'[]');
+let sales = JSON.parse(localStorage.getItem('sales')||'[]');
+
+// === CLOCK ===
+function updateClock(){document.getElementById('clock').textContent=new Date().toLocaleTimeString();}
+setInterval(updateClock,1000);updateClock();
+
+// === PRODUCT DISPLAY ===
+function renderProducts(){
+  const area=document.getElementById('productsArea'); area.innerHTML='';
+  products.forEach((p,i)=>{
+    const div=document.createElement('div'); div.className='tile';
+    div.innerHTML=`<div class="name">${p.name}</div><div class="meta">₱${parseFloat(p.price).toFixed(2)} | Stock: ${p.stock}</div>`;
+    div.addEventListener('click',()=>addToCart(p.barcode,1));
+    area.appendChild(div);
+  });
+}
+function renderInventory(){
+  const area=document.getElementById('inventoryArea'); let html=`<table><tr><th>Name</th><th>Price</th><th>Stock</th><th>Barcode</th><th>Actions</th></tr>`;
+  products.forEach((p,i)=>{
+    html+=`<tr>
+      <td>${p.name}</td><td>₱${parseFloat(p.price).toFixed(2)}</td><td>${p.stock}</td><td>${p.barcode}</td>
+      <td class="actions">
+        <button onclick="editProduct(${i})">Edit</button>
+        <button onclick="deleteProduct(${i})">Delete</button>
+      </td>
+    </tr>`;
+  });
+  html+='</table>'; area.innerHTML=html;
+}
+renderProducts(); renderInventory();
+
+// === CART ===
+function saveCart(){localStorage.setItem('cart',JSON.stringify(cart));}
+function renderCart(){
+  const area=document.getElementById('cartItems'); area.innerHTML=''; let subtotal=0;
+  cart.forEach((c,i)=>{
+    subtotal+=c.price*c.qty;
+    const div=document.createElement('div'); div.className='cart-item';
+    div.innerHTML=`${c.name} × ${c.qty} <div>₱${(c.price*c.qty).toFixed(2)}
+      <button onclick="editCartItem(${i})">Edit</button>
+      <button onclick="removeCartItem(${i})">x</button></div>`;
+    area.appendChild(div);
+  });
+  document.getElementById('cartSubtotal').textContent='₱'+subtotal.toFixed(2);
+}
+function addToCart(barcode,qty){
+  const p=products.find(x=>x.barcode==barcode); if(!p) return alert('Product not found');
+  const c=cart.find(x=>x.barcode==barcode); if(c){c.qty+=qty;}else{cart.push({name:p.name,barcode:p.barcode,price:parseFloat(p.price),qty:qty});}
+  saveCart(); renderCart();
+}
+function removeCartItem(i){cart.splice(i,1); saveCart(); renderCart();}
+function editCartItem(i){
+  const newQty=parseInt(prompt(`Edit quantity for ${cart[i].name}:`, cart[i].qty));
+  if(isNaN(newQty)||newQty<1) return alert('Invalid quantity');
+  cart[i].qty=newQty; saveCart(); renderCart();
+}
+
+// === INVENTORY FUNCTIONS ===
+function addProduct(){promptProduct();}
+function editProduct(i){promptProduct(products[i],i);}
+function deleteProduct(i){if(confirm('Delete product?')){products.splice(i,1); saveProducts(); renderProducts(); renderInventory();}}
+function saveProducts(){localStorage.setItem('products',JSON.stringify(products));}
+function promptProduct(p=null,index=null){
+  const modal=document.createElement('div'); modal.className='modal-backdrop show';
+  modal.innerHTML=`<div class="modal">
+    <h3>${p?'Edit':'Add'} Product</h3>
+    <input id="prodName" placeholder="Product Name" value="${p?p.name:''}" />
+    <input id="prodPrice" placeholder="Price" type="number" min="0" step="0.01" value="${p?p.price:''}" />
+    <input id="prodStock" placeholder="Stock" type="number" min="0" value="${p?p.stock:''}" />
+    <input id="prodBarcode" placeholder="Barcode" value="${p?p.barcode:''}" />
+    <div style="margin-top:12px;display:flex;gap:6px">
+      <button id="saveProdBtn" class="btn">Save</button>
+      <button id="cancelProdBtn" class="btn ghost">Cancel</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#cancelProdBtn').onclick=()=>modal.remove();
+  modal.querySelector('#saveProdBtn').onclick=()=>{
+    const name=modal.querySelector('#prodName').value.trim();
+    const price=parseFloat(modal.querySelector('#prodPrice').value);
+    const stock=parseInt(modal.querySelector('#prodStock').value);
+    const barcode=modal.querySelector('#prodBarcode').value.trim();
+    if(!name||isNaN(price)||isNaN(stock)||!barcode) return alert('Fill all fields');
+    const prod={name,price,stock,barcode};
+    if(index!==null){products[index]=prod;}else{products.push(prod);}
+    saveProducts(); renderProducts(); renderInventory(); modal.remove();
+  };
+}
+
+// === CHECKOUT ===
+document.getElementById('btn-checkout').onclick=()=>{
+  if(cart.length===0) return alert('Cart is empty');
+  const paymentMethod=document.getElementById('paymentMethod').value;
+  const subtotal=cart.reduce((sum,c)=>sum+c.price*c.qty,0);
+  const timestamp=new Date().toLocaleString();
+
+  // Deduct stock
+  cart.forEach(c => {
+    const prod = products.find(p => p.barcode === c.barcode);
+    if (prod) prod.stock -= c.qty;
+  });
+  saveProducts();
+  renderProducts();
+  renderInventory();
+
+  sales.push({items:[...cart],subtotal,paymentMethod,timestamp});
+  localStorage.setItem('sales',JSON.stringify(sales));
+
+  // === PROFESSIONAL RECEIPT ===
+  let receipt=`<div style="font-family:monospace;white-space:pre-wrap;font-size:14px;width:280px">
+  <div style="text-align:center;font-weight:bold">Arts Printing Shop</div>
+  <div style="text-align:center">Brgy. Lamba Banga South Cotabato</div>
+  <div style="text-align:center">Tel: ---</div>
+  <hr>
+  Date: ${timestamp}
+  <hr>
+  Items:\n`;
+
+  cart.forEach(c=>{
+    receipt+=`${c.name.padEnd(15)} ${String(c.qty).padStart(3)} × ₱${c.price.toFixed(2).padStart(6)} = ₱${(c.price*c.qty).toFixed(2)}\n`;
+  });
+
+  receipt+=`--------------------------------
+TOTAL: ₱${subtotal.toFixed(2)}
+Payment: ${paymentMethod}
+--------------------------------
+   Thank you for shopping!
+   Please come again.
+  </div>`;
+
+  const win=window.open('','PRINT','width=400,height=600');
+  win.document.write(receipt);
+  win.document.close(); win.focus(); win.print(); win.close();
+
+  cart=[]; saveCart(); renderCart(); renderReports();
+};
+// === BARCODE QUICK ADD ===
+document.getElementById('btn-add-sku').onclick=()=>{
+  const barcode=document.getElementById('quick-sku').value.trim();
+  const qty=parseInt(document.getElementById('quick-qty').value);
+  if(!barcode||qty<1) return alert('Enter valid barcode and quantity');
+  addToCart(barcode,qty);
+  document.getElementById('quick-sku').value=''; document.getElementById('quick-qty').value=1;
+};
+document.getElementById('quick-sku').addEventListener('keypress',e=>{if(e.key==='Enter'){document.getElementById('btn-add-sku').click();}});
+
+// === RESET CART & SYSTEM ===
+document.getElementById('btn-clear-cart').onclick=()=>{if(confirm('Clear cart?')){cart=[]; saveCart(); renderCart();}};
+document.getElementById('btn-reset').onclick=()=>{if(confirm('Reset all data?')){localStorage.clear(); location.reload();}};
+
+// === ADMIN LOGIN MODAL HANDLER ===
+function promptAdmin(callback){
+  const modal=document.getElementById('adminModal');
+  modal.style.display='flex';
+  document.getElementById('adminUser').value='';
+  document.getElementById('adminPass').value='';
+
+  const loginHandler=()=>{
+    const username=document.getElementById('adminUser').value.trim();
+    const password=document.getElementById('adminPass').value.trim();
+    if(username==='Admin' && password==='admin'){
+      modal.style.display='none';
+      removeListeners();
+      callback();
+    } else { alert('Invalid credentials!'); }
+  };
+  const cancelHandler=()=>{ modal.style.display='none'; removeListeners(); };
+  function removeListeners(){
+    document.getElementById('adminLoginBtn').removeEventListener('click',loginHandler);
+    document.getElementById('adminCancelBtn').removeEventListener('click',cancelHandler);
+  }
+  document.getElementById('adminLoginBtn').addEventListener('click',loginHandler);
+  document.getElementById('adminCancelBtn').addEventListener('click',cancelHandler);
+}
+
+// === TABS WITH ADMIN PROTECTION ===
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.addEventListener('click',()=>{
+    if(tab.dataset.tab==='inventory'||tab.dataset.tab==='reports'){ promptAdmin(()=>showTab(tab)); }
+    else{ showTab(tab); }
+  });
+});
+function showTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  document.querySelectorAll('section[id^="tab-"]').forEach(s=>{ s.style.display='none'; s.classList.remove('fadeUp'); });
+  const target=document.getElementById('tab-'+tab.dataset.tab);
+  target.style.display='block';
+  // re-trigger a smooth fade/slide on show
+  void target.offsetWidth; // force reflow
+  target.classList.add('fadeUp');
+}
+
+// === REPORTS ===
+function renderReports(){
+  let html='<table><tr><th>Time</th><th>Items</th><th>Total</th><th>Payment</th><th>Actions</th></tr>';
+  let totalSum=0;
+  sales.forEach((s,i)=>{
+    const items=s.items.map(x=>x.name+' × '+x.qty).join(', ');
+    totalSum+=s.subtotal;
+    html+=`<tr>
+      <td>${new Date(s.timestamp).toLocaleString()}</td>
+      <td>${items}</td>
+      <td>₱${s.subtotal.toFixed(2)}</td>
+      <td>${s.paymentMethod}</td>
+      <td>
+        <button onclick="editSale(${i})">Edit</button>
+        <button onclick="deleteSale(${i})">Delete</button>
+      </td>
+    </tr>`;
+  });
+  html+='</table>';
+  document.getElementById('reportTable').innerHTML=html;
+  document.getElementById('summary-total').textContent='₱'+totalSum.toFixed(2);
+  document.getElementById('summary-count').textContent=sales.length;
+}
+renderReports();
+function editSale(i){
+  sales[i].items.forEach((item,j)=>{
+    const newQty=parseInt(prompt(`Edit quantity for ${item.name}:`, item.qty));
+    if(!isNaN(newQty)&&newQty>0) sales[i].items[j].qty=newQty;
+  });
+  sales[i].subtotal=sales[i].items.reduce((sum,c)=>sum+c.price*c.qty,0);
+  localStorage.setItem('sales',JSON.stringify(sales));
+  renderReports();
+
+  let receipt=`<div style="font-family:monospace;white-space:pre-wrap;font-size:14px;width:280px">
+  <div style="text-align:center;font-weight:bold">Arts Printing Shop</div>
+  <div style="text-align:center">Brgy. Lamba Banga South Cotabato</div>
+  <div style="text-align:center">Tel: ---</div>
+  <hr>
+  Date: ${new Date(sales[i].timestamp).toLocaleString()}
+  <hr>
+  Items:\n`;
+
+  sales[i].items.forEach(c=>{
+    receipt+=`${c.name.padEnd(15)} ${String(c.qty).padStart(3)} × ₱${c.price.toFixed(2).padStart(6)} = ₱${(c.price*c.qty).toFixed(2)}\n`;
+  });
+
+  receipt+=`--------------------------------
+TOTAL: ₱${sales[i].subtotal.toFixed(2)}
+Payment: ${sales[i].paymentMethod}
+--------------------------------
+          Thank you!
+   
+  </div>`;
+
+  const win=window.open('','PRINT','width=400,height=600');
+  win.document.write(receipt);
+  win.document.close(); win.focus(); win.print(); win.close();
+}function deleteSale(i){ if(confirm('Delete this sale?')){ sales.splice(i,1); localStorage.setItem('sales',JSON.stringify(sales)); renderReports(); } }
+
+// === INVENTORY & CART BUTTONS ===
+document.getElementById('btn-add-product').onclick=addProduct;
+
+// === CSV: EXPORT PRODUCTS ===
+document.getElementById('btn-export-products').addEventListener('click',()=>{
+  if(!products.length){ alert('No products to export'); return; }
+  const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const rows=['name,price,stock,barcode'];
+  products.forEach(p=>{
+    rows.push([esc(p.name),esc(parseFloat(p.price).toFixed(2)),esc(p.stock),esc(p.barcode)].join(','));
+  });
+  const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='products.csv'; a.click(); URL.revokeObjectURL(a.href);
+});
+
+// === CSV: IMPORT PRODUCTS ===
+document.getElementById('btn-import').addEventListener('click',()=>{
+  const input=document.createElement('input'); input.type='file'; input.accept='.csv,text/csv';
+  input.onchange=e=>{
+    const file=e.target.files&&e.target.files[0]; if(!file) return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const text=String(ev.target.result||'');
+      const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+      if(!lines.length){ alert('CSV is empty'); return; }
+      const header=lines.shift().toLowerCase();
+      const heads=header.split(',').map(h=>h.trim());
+      const idx={ name:heads.indexOf('name'), price:heads.indexOf('price'), stock:heads.indexOf('stock'), barcode:heads.indexOf('barcode') };
+      if(idx.name<0||idx.price<0||idx.stock<0||idx.barcode<0){ alert('CSV must include header: name,price,stock,barcode'); return; }
+      const parseLine=line=>{ const re=/(?:^|,)("(?:[^"]|"")*"|[^,]*)/g; let m; const out=[]; while((m=re.exec(line))!==null){ let v=m[1]; if(v.startsWith('"')&&v.endsWith('"')){ v=v.slice(1,-1).replace(/""/g,'"'); } out.push(v); } return out; };
+      let imported=0;
+      lines.forEach(line=>{
+        const cols=parseLine(line);
+        const name=(cols[idx.name]||'').trim();
+        const price=parseFloat(cols[idx.price]);
+        const stock=parseInt(cols[idx.stock]);
+        const barcode=(cols[idx.barcode]||'').trim();
+        if(!name||!barcode||isNaN(price)||isNaN(stock)) return; // skip bad rows
+        products.push({name,price,stock,barcode}); imported++;
+      });
+      localStorage.setItem('products',JSON.stringify(products));
+      renderProducts(); renderInventory();
+      alert(`${imported} product(s) imported`);
+    };
+    reader.readAsText(file);
+  };
+  input.click();
+});
+
+// === CSV: EXPORT SALES (Reports) ===
+document.getElementById('btn-export-reports').addEventListener('click',()=>{
+  if(!sales.length){ alert('No sales to export'); return; }
+  const esc=v=>`"${String(v??'').replace(/"/g,'""')}"`;
+  const rows=['timestamp,items,subtotal,paymentMethod'];
+  sales.forEach(s=>{
+    const items=s.items.map(i=>`${i.name} × ${i.qty}`).join('; ');
+    rows.push([esc(new Date(s.timestamp).toLocaleString()),esc(items),esc(s.subtotal.toFixed(2)),esc(s.paymentMethod)].join(','));
+  });
+  const blob=new Blob([rows.join('\n')],{type:'text/csv;charset=utf-8;'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='sales.csv'; a.click(); URL.revokeObjectURL(a.href);
+});
+</script>
+</body>
+</html>
